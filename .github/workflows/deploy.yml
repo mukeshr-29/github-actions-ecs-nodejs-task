@@ -40,8 +40,30 @@ jobs:
       env:
         IMAGE_TAG: latest
 
-    - name: Deploy to ECS
+    - name: Update ECS task definition and service
+      run: |
+        ECS_TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${{ secrets.TASK_FAMILY }})
+        NEW_TASK_DEFINITION=$(echo $ECS_TASK_DEFINITION | jq --arg IMAGE "${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}" '
+          .taskDefinition |
+          .containerDefinitions[0].image=$IMAGE |
+          {
+            family: .family,
+            networkMode: .networkMode,
+            containerDefinitions: .containerDefinitions,
+            requiresCompatibilities: .requiresCompatibilities,
+            cpu: .cpu,
+            memory: .memory,
+            executionRoleArn: if .executionRoleArn != null then .executionRoleArn else empty end,
+            taskRoleArn: if .taskRoleArn != null then .taskRoleArn else empty end
+          }
+        ')
+        echo $NEW_TASK_DEFINITION > new-task-def.json
+        aws ecs register-task-definition --cli-input-json file://new-task-def.json
+        aws ecs update-service --cluster ${{ secrets.CLUSTER_NAME }} --service ${{ secrets.SERVICE_NAME }} --force-new-deployment
       env:
+        AWS_REGION: ${{ secrets.AWS_REGION }}
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         CLUSTER_NAME: ${{ secrets.CLUSTER_NAME }}
         SERVICE_NAME: ${{ secrets.SERVICE_NAME }}
         TASK_FAMILY: ${{ secrets.TASK_FAMILY }}
@@ -49,9 +71,3 @@ jobs:
         ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
         ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
         IMAGE_TAG: ${{ github.sha }}
-      run: |
-        ECS_TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition $TASK_FAMILY)
-        NEW_TASK_DEFINITION=$(echo $ECS_TASK_DEFINITION | jq --arg IMAGE "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" '.taskDefinition | .containerDefinitions[0].image=$IMAGE | {family: .family, networkMode: .networkMode, containerDefinitions: .containerDefinitions, requiresCompatibilities: .requiresCompatibilities, cpu: .cpu, memory: .memory, executionRoleArn: .executionRoleArn, taskRoleArn: .taskRoleArn}')
-        echo $NEW_TASK_DEFINITION > new-task-def.json
-        aws ecs register-task-definition --cli-input-json file://new-task-def.json
-        aws ecs update-service --cluster $CLUSTER_NAME --service $SERVICE_NAME --force-new-deployment
