@@ -29,28 +29,25 @@ jobs:
         aws-region: ${{ secrets.AWS_REGION }}
 
     - name: Log in to Amazon ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v1
+      run: aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
 
-    - name: Build, tag, and push the Docker image
+    - name: Build Docker image
+      run: docker build -t ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG .
       env:
-        ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
-        ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
-        IMAGE_TAG: ${{ github.sha }}
-      run: |
-        echo "Building the Docker image..."
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-        echo "Tagging the Docker image..."
-        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-        echo "Pushing the Docker image..."
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        IMAGE_TAG: latest
+
+    - name: Push Docker image to ECR
+      run: docker push ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG
+      env:
+        IMAGE_TAG: latest
+
     - name: Deploy to ECS
       env:
         CLUSTER_NAME: ${{ secrets.CLUSTER_NAME }}
         SERVICE_NAME: ${{ secrets.SERVICE_NAME }}
         TASK_FAMILY: ${{ secrets.TASK_FAMILY }}
         CONTAINER_NAME: ${{ secrets.CONTAINER_NAME }}
-        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
         ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
         IMAGE_TAG: ${{ github.sha }}
       run: |
@@ -59,5 +56,3 @@ jobs:
         echo $NEW_TASK_DEFINITION > new-task-def.json
         aws ecs register-task-definition --cli-input-json file://new-task-def.json
         aws ecs update-service --cluster $CLUSTER_NAME --service $SERVICE_NAME --force-new-deployment
-
-
