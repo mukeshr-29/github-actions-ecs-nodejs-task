@@ -40,29 +40,6 @@ jobs:
       env:
         IMAGE_TAG: latest
 
-    - name: Update Task Definition with New Image
+    - name: Update ECS service
       run: |
-        NEW_TASK_DEFINITION=$(echo "$ECS_TASK_DEFINITION" | jq --arg IMAGE "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" '
-          .taskDefinition |
-          {
-            family: .family,
-            networkMode: .networkMode,
-            containerDefinitions: [.containerDefinitions[] | .image = $IMAGE],
-            requiresCompatibilities: .requiresCompatibilities,
-            cpu: .cpu,
-            memory: .memory,
-            executionRoleArn: if has("executionRoleArn") then .executionRoleArn else empty end,
-            taskRoleArn: if has("taskRoleArn") then .taskRoleArn else empty end,
-            platformVersion: "LATEST",
-            cpu: "256",
-            memory: "512"
-          }
-        ')
-        echo "New Task Definition: $NEW_TASK_DEFINITION"
-        echo "$NEW_TASK_DEFINITION" > new-task-def.json
-
-    - name: Register New Task Definition
-      run: aws ecs register-task-definition --cli-input-json file://new-task-def.json
-
-    - name: Update ECS Service
-      run: aws ecs update-service --cluster $CLUSTER_NAME --service $SERVICE_NAME --force-new-deployment
+          aws ecs update-service --cluster ${{ secrets.CLUSTER_NAME }} --service ${{ secrets.SERVICE_NAME }} --force-new-deployment
