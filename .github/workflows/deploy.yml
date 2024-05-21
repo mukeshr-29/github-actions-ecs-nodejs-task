@@ -44,4 +44,5 @@ jobs:
       run: |
           aws ecs update-service --cluster ${{ secrets.CLUSTER_NAME }} --service ${{ secrets.SERVICE_NAME }} --task-definition ${{ secrets.TASK_FAMILY }} --force-new-deployment
 
+        
           
