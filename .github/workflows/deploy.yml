@@ -57,3 +57,4 @@ jobs:
         aws ecs register-task-definition --cli-input-json file://new-task-def.json
         aws ecs update-service --cluster $CLUSTER_NAME --service $SERVICE_NAME --force-new-deployment
 
+
