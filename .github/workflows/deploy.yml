@@ -40,52 +40,11 @@ jobs:
       env:
         IMAGE_TAG: latest
 
-    - name: Describe ECS Task Definition
+    - name: Update ECS Service with new image
       run: |
-        TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${{ secrets.TASK_FAMILY }})
-        echo "Current Task Definition: $TASK_DEFINITION"
-
-    - name: Set up AWS CLI
-      run: |
-          sudo apt-get update
-          sudo apt-get install -y awscli
-
-    - name: Describe ECS Task Definition
-      id: describe-task
-      run: |
-          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${{ secrets.TASK_FAMILY }} | jq -r '.taskDefinition')
-          echo "::set-output name=task_definition::$TASK_DEFINITION"
-
-    - name: Update Task Definition with New Image
-      id: update-task-def
-      run: |
-          NEW_TASK_DEFINITION=$(echo "${{ steps.describe-task.outputs.task_definition }}" | jq --arg IMAGE "${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:${{ secrets.IMAGE_TAG }}" '
-          {
-            family: .family,
-            networkMode: .networkMode,
-            containerDefinitions: (.containerDefinitions | map(.image = $IMAGE)),
-            requiresCompatibilities: .requiresCompatibilities,
-            cpu: .cpu,
-            memory: .memory,
-            executionRoleArn: .executionRoleArn,
-            taskRoleArn: .taskRoleArn,
-            networkConfiguration: .networkConfiguration,
-            volumes: .volumes,
-            placementConstraints: .placementConstraints,
-            tags: .tags
-          }')
-          echo "$NEW_TASK_DEFINITION" > new-task-def.json
-
-    - name: Register New Task Definition
-      run: |
+          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${{ secrets.TASK_FAMILY }})
+          NEW_TASK_DEF=$(echo $TASK_DEFINITION | jq --arg IMAGE "${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:latest" '.taskDefinition | .containerDefinitions[0].image = $IMAGE | {family: .family, networkMode: .networkMode, containerDefinitions: .containerDefinitions, requiresCompatibilities: .requiresCompatibilities, cpu: .cpu, memory: .memory, executionRoleArn: .executionRoleArn, taskRoleArn: .taskRoleArn}')
+          echo "$NEW_TASK_DEF" > new-task-def.json
           aws ecs register-task-definition --cli-input-json file://new-task-def.json
-
-    - name: Get New Task Definition Revision
-      id: get-new-revision
-      run: |
-          NEW_REVISION=$(aws ecs describe-task-definition --task-definition ${{ secrets.TASK_FAMILY }} | jq -r '.taskDefinition.revision')
-          echo "::set-output name=new_revision::$NEW_REVISION"
-
-    - name: Update ECS Service
-      run: |
-          aws ecs update-service --cluster ${{ secrets.CLUSTER_NAME }} --service ${{ secrets.SERVICE_NAME }} --task-definition ${{ secrets.TASK_FAMILY }}:${{ steps.get-new-revision.outputs.new_revision }} --force-new-deployment
+          REVISION=$(aws ecs describe-task-definition --task-definition ${{ secrets.TASK_FAMILY }} | jq '.taskDefinition.revision')
+          aws ecs update-service --cluster ${{ secrets.CLUSTER_NAME }} --service ${{ secrets.SERVICE_NAME }} --task-definition ${{ secrets.TASK_FAMILY }}:$REVISION --force-new-deployment
